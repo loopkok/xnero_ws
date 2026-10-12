@@ -67,6 +67,11 @@ class NeroTeleopNode(Node):
         self.declare_parameter("print_metrics", False)  # print full latency breakdown
         self.declare_parameter("print_ik_stats", True)   # print IK success rate + target pose
         self.declare_parameter("dry_run", False)         # True = don't move arm
+        # True = 仿真模式：不连 CAN，臂命令发 ~/joint_commands（给 MuJoCo 仿真）。
+        # 默认 False —— 真机行为完全不变。见 xnero_mujoco_sim / sim_arm_stub.py
+        self.declare_parameter("sim_mode", False)
+        # 必须在连接块（__init__ 下方）之前读出来 —— 那块靠它决定用真机还是替身
+        self._sim_mode = bool(self.get_parameter("sim_mode").value)
         self.declare_parameter("workspace_radius", 0.58)
         self.declare_parameter("workspace_z_min", float('-inf'))
         self.declare_parameter("workspace_z_max", float('inf'))
@@ -107,7 +112,12 @@ class NeroTeleopNode(Node):
             channel=can_channel,
             interface=can_interface,
         )
-        self.robot = AgxArmFactory.create_arm(cfg)
+        if self._sim_mode:
+            from nero_quest_teleop.sim_arm_stub import SimArmStub
+
+            self.robot = SimArmStub(self)          # 不碰 CAN，命令发 ROS 话题
+        else:
+            self.robot = AgxArmFactory.create_arm(cfg)
         self.robot.connect()
 
         # Enable arm
